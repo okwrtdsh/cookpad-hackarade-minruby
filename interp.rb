@@ -148,7 +148,11 @@ def evaluate(exp, env)
       # (*1) formal parameter: a variable as found in the function definition.
       # For example, `a`, `b`, and `c` are the formal parameters of
       # `def foo(a, b, c)`.
-      raise(NotImplementedError) # Problem 5
+      lenv = {}
+      func[0].each.with_index(2) do |arg, i|
+        lenv[arg] = evaluate(exp[i], env)
+      end
+      evaluate(func[1], lenv)
     end
 
   when "func_def"
@@ -160,7 +164,7 @@ def evaluate(exp, env)
     # All you need is store them into $function_definitions.
     #
     # Advice: $function_definitions[???] = ???
-    raise(NotImplementedError) # Problem 5
+    $function_definitions[exp[1]] = exp.drop(2)
 
 
 #
