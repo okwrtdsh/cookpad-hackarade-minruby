@@ -1,7 +1,7 @@
 require "minruby"
 
 # An implementation of the evaluator
-def evaluate(exp, env)
+def evaluate(exp, env, fdef)
   # exp: A current node of AST
   # env: An environment (explained later)
 
@@ -15,21 +15,21 @@ def evaluate(exp, env)
     exp[1] # return the immediate value as is
 
   when "+"
-    evaluate(exp[1], env) + evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) + evaluate(exp[2], env, fdef)
   when "-"
-    evaluate(exp[1], env) - evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) - evaluate(exp[2], env, fdef)
   when "*"
-    evaluate(exp[1], env) * evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) * evaluate(exp[2], env, fdef)
   when "/"
-    evaluate(exp[1], env) / evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) / evaluate(exp[2], env, fdef)
   when "%"
-    evaluate(exp[1], env) % evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) % evaluate(exp[2], env, fdef)
   when ">"
-    evaluate(exp[1], env) > evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) > evaluate(exp[2], env, fdef)
   when "<"
-    evaluate(exp[1], env) < evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) < evaluate(exp[2], env, fdef)
   when "=="
-    evaluate(exp[1], env) == evaluate(exp[2], env)
+    evaluate(exp[1], env, fdef) == evaluate(exp[2], env, fdef)
   # ... Implement other operators that you need
 
 #
@@ -41,9 +41,13 @@ def evaluate(exp, env)
     #
     # Advice 1: Insert `pp(exp)` and observe the AST first.
     # Advice 2: Apply `evaluate` to each child of this node.
-    exp.drop(1).each do |e|
-      evaluate(e, env)
+    i = 1
+    last = nil
+    while exp[i]
+      last = evaluate(exp[i], env, fdef)
+      i = i + 1
     end
+    last
 
   # The second argument of this method, `env`, is an "environement" that
   # keeps track of the values stored to variables.
@@ -60,7 +64,7 @@ def evaluate(exp, env)
     # Variable assignment: store (or overwrite) the value to the environment
     #
     # Advice: env[???] = ???
-    env[exp[1]] = evaluate(exp[2], env)
+    env[exp[1]] = evaluate(exp[2], env, fdef)
 
 
 #
@@ -77,16 +81,16 @@ def evaluate(exp, env)
     #   else
     #     ???
     #   end
-    if evaluate(exp[1], env)
-      evaluate(exp[2], env)
+    if evaluate(exp[1], env, fdef)
+      evaluate(exp[2], env, fdef)
     else
-      evaluate(exp[3], env)
+      evaluate(exp[3], env, fdef)
     end
 
   when "while"
     # Loop.
-    while evaluate(exp[1], env)
-      evaluate(exp[2], env)
+    while evaluate(exp[1], env, fdef)
+      evaluate(exp[2], env, fdef)
     end
 
 
@@ -96,31 +100,40 @@ def evaluate(exp, env)
 
   when "func_call"
     # Lookup the function definition by the given function name.
-    func = $function_definitions[exp[1]]
+    func = fdef[exp[1]]
 
-    if func.nil?
+    if func == nil
       # We couldn't find a user-defined function definition;
       # it should be a builtin function.
       # Dispatch upon the given function name, and do paticular tasks.
       case exp[1]
       when "p"
         # MinRuby's `p` method is implemented by Ruby's `p` method.
-        p(evaluate(exp[2], env))
+        p(evaluate(exp[2], env, fdef))
+      when "pp"
+        # MinRuby's `p` method is implemented by Ruby's `p` method.
+        pp(evaluate(exp[2], env, fdef))
+      when "raise"
+        raise(evaluate(exp[2], env, fdef))
+      when "require"
+        nil
+      when "minruby_parse"
+        minruby_parse(evaluate(exp[2], env, fdef))
+      when "minruby_load"
+        minruby_load()
       when "Integer"
-        Integer(evaluate(exp[2], env))
+        Integer(evaluate(exp[2], env, fdef))
       when "fizzbuzz"
-        def fizzbuzz(i)
-          if i % 15 == 0
-            "FizzBuzz"
-          elsif i % 3 == 0
-            "Fizz"
-          elsif i % 5 == 0
-            "Buzz"
-          else
-            i
-          end
+        i = evaluate(exp[2], env, fdef)
+        if i % 15 == 0
+          "FizzBuzz"
+        elsif i % 3 == 0
+          "Fizz"
+        elsif i % 5 == 0
+          "Buzz"
+        else
+          i
         end
-        fizzbuzz(evaluate(exp[2], env))
       else
         raise("unknown builtin function")
       end
@@ -149,10 +162,13 @@ def evaluate(exp, env)
       # For example, `a`, `b`, and `c` are the formal parameters of
       # `def foo(a, b, c)`.
       lenv = {}
-      func[0].each.with_index(2) do |arg, i|
-        lenv[arg] = evaluate(exp[i], env)
+      i = 0
+      func_args = func[2]
+      while func_args[i]
+        lenv[func_args[i]] = evaluate(exp[i+2], env, fdef)
+        i = i + 1
       end
-      evaluate(func[1], lenv)
+      evaluate(func[3], lenv, fdef)
     end
 
   when "func_def"
@@ -164,8 +180,7 @@ def evaluate(exp, env)
     # All you need is store them into $function_definitions.
     #
     # Advice: $function_definitions[???] = ???
-    $function_definitions[exp[1]] = exp.drop(2)
-
+    fdef[exp[1]] = exp
 
 #
 ## Problem 6: Arrays and Hashes
@@ -173,34 +188,41 @@ def evaluate(exp, env)
 
   # You don't need advices anymore, do you?
   when "ary_new"
-    exp.drop(1).map do |e|
-      evaluate(e, env)
+    a = []
+    i = 1
+    while exp[i]
+      a[i-1] = evaluate(exp[i], env, fdef)
+      i = i + 1
     end
+    a
 
   when "ary_ref"
-    evaluate(exp[1], env)[evaluate(exp[2], env)]
+    evaluate(exp[1], env, fdef)[evaluate(exp[2], env, fdef)]
 
   when "ary_assign"
-    evaluate(exp[1], env)[evaluate(exp[2], env)] = evaluate(exp[3], env)
+    evaluate(exp[1], env, fdef)[evaluate(exp[2], env, fdef)] = evaluate(exp[3], env, fdef)
 
   when "hash_new"
     h = {}
-    exp.drop(1).each_slice(2) do |k,v|
-      h[evaluate(k, env)] = evaluate(v, env)
+    i = 1
+    while exp[i]
+      h[evaluate(exp[i], env, fdef)] = evaluate(exp[i+1], env, fdef)
+      i = i + 2
     end
     h
 
   else
     p("error")
     pp(exp)
-    raise("unknown node")
+    p(fdef)
+    p("unknown node")
   end
 end
 
 
-$function_definitions = {}
+fdef = {}
 env = {}
 
 # `minruby_load()` == `File.read(ARGV.shift)`
 # `minruby_parse(str)` parses a program text given, and returns its AST
-evaluate(minruby_parse(minruby_load()), env)
+evaluate(minruby_parse(minruby_load()), env, fdef)
